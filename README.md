@@ -1,9 +1,12 @@
-# ozzo-dbx
+dbx
+[![Go Report Card](https://goreportcard.com/badge/github.com/pocketbase/dbx)](https://goreportcard.com/report/github.com/pocketbase/dbx)
+[![GoDoc](https://godoc.org/github.com/pocketbase/dbx?status.svg)](https://pkg.go.dev/github.com/pocketbase/dbx)
+================================================================================
 
-[![GoDoc](https://godoc.org/github.com/go-ozzo/ozzo-dbx?status.png)](http://godoc.org/github.com/go-ozzo/ozzo-dbx)
-[![Build Status](https://travis-ci.org/go-ozzo/ozzo-dbx.svg?branch=master)](https://travis-ci.org/go-ozzo/ozzo-dbx)
-[![Coverage Status](https://coveralls.io/repos/github/go-ozzo/ozzo-dbx/badge.svg?branch=master)](https://coveralls.io/github/go-ozzo/ozzo-dbx?branch=master)
-[![Go Report](https://goreportcard.com/badge/github.com/go-ozzo/ozzo-dbx)](https://goreportcard.com/report/github.com/go-ozzo/ozzo-dbx)
+> ⚠️ This is a maintained fork of [go-ozzo/ozzo-dbx](https://github.com/go-ozzo/ozzo-dbx) (see [#103](https://github.com/go-ozzo/ozzo-dbx/issues/103)).
+>
+> Currently, the changes are primarily related to better SQLite support and some other minor improvements, implementing [#99](https://github.com/go-ozzo/ozzo-dbx/pull/99), [#100](https://github.com/go-ozzo/ozzo-dbx/pull/100) and [#102](https://github.com/go-ozzo/ozzo-dbx/pull/102).
+
 
 ## Summary
 
@@ -31,14 +34,11 @@
 - [Logging Executed SQL Statements](#logging-executed-sql-statements)
 - [Supporting New Databases](#supporting-new-databases)
 
-## Other Languages
-
-[Русский](/docs/README-ru.md)
 
 ## Description
 
-ozzo-dbx is a Go package that enhances the standard `database/sql` package by providing powerful data retrieval methods
-as well as DB-agnostic query building capabilities. ozzo-dbx is not an ORM. It has the following features:
+`dbx` is a Go package that enhances the standard `database/sql` package by providing powerful data retrieval methods
+as well as DB-agnostic query building capabilities. `dbx` is not an ORM. It has the following features:
 
 * Populating data into structs and NullString maps
 * Named parameter binding
@@ -60,14 +60,14 @@ Go 1.13 or above.
 Run the following command to install the package:
 
 ```
-go get github.com/go-ozzo/ozzo-dbx
+go get github.com/pocketbase/dbx
 ```
 
 In addition, install the specific DB driver package for the kind of database to be used. Please refer to
 [SQL database drivers](https://github.com/golang/go/wiki/SQLDrivers) for a complete list. For example, if you are
 using MySQL, you may install the following package:
 
-```
+```sh
 go get github.com/go-sql-driver/mysql
 ```
 
@@ -95,9 +95,10 @@ solve the problem. Please see the last section for more details.
 The following code snippet shows how you can use this package in order to access data from a MySQL database.
 
 ```go
+package main
+
 import (
-	"fmt"
-	"github.com/go-ozzo/ozzo-dbx"
+	"github.com/pocketbase/dbx"
 	_ "github.com/go-sql-driver/mysql"
 )
 
@@ -111,22 +112,22 @@ func main() {
 	var users []struct {
 		ID, Name string
 	}
-	err := q.All(&users)
+	q.All(&users)
 
 	// fetch a single row into a struct
 	var user struct {
 		ID, Name string
 	}
-	err = q.One(&user)
+	q.One(&user)
 
 	// fetch a single row into a string map
 	data := dbx.NullStringMap{}
-	err = q.One(data)
+	q.One(data)
 
 	// fetch row by row
 	rows2, _ := q.Rows()
 	for rows2.Next() {
-		_ = rows2.ScanStruct(&user)
+		rows2.ScanStruct(&user)
 		// rows.ScanMap(data)
 		// rows.Scan(&id, &name)
 	}
@@ -136,9 +137,10 @@ func main() {
 And the following example shows how to use the query building capability of this package.
 
 ```go
+package main
+
 import (
-	"fmt"
-	"github.com/go-ozzo/ozzo-dbx"
+	"github.com/pocketbase/dbx"
 	_ "github.com/go-sql-driver/mysql"
 )
 
@@ -156,11 +158,11 @@ func main() {
 	var users []struct {
 		ID, Name string
 	}
-	err := q.All(&users)
+	q.All(&users)
 
 	// build an INSERT query
 	//   INSERT INTO `users` (`name`) VALUES ('James')
-	err = db.Insert("users", dbx.Params{
+	db.Insert("users", dbx.Params{
 		"name": "James",
 	}).Execute()
 }
@@ -209,7 +211,7 @@ type User struct {
 
 var (
 	users []User
-	user User
+	user  User
 
 	row dbx.NullStringMap
 
@@ -269,7 +271,7 @@ The following example shows how fields are populated according to the rules abov
 ```go
 type User struct {
 	id     int
-	Type   int `db:"-"`
+	Type   int    `db:"-"`
 	MyName string `db:"name"`
 	Profile
 	Address Address `db:"addr"`
@@ -299,7 +301,7 @@ if a struct field does not have a corresponding column in the result, it will no
 A SQL statement is usually parameterized with dynamic values. For example, you may want to select the user record
 according to the user ID received from the client. Parameter binding should be used in this case, and it is almost
 always preferred to prevent from SQL injection attacks. Unlike `database/sql` which does anonymous parameter binding, 
-`ozzo-dbx` uses named parameter binding. *Anonymous parameter binding is not supported*, as it will mess up with named
+`dbx` uses named parameter binding. *Anonymous parameter binding is not supported*, as it will mess up with named
 parameters. For example,
 
 ```go
@@ -342,7 +344,7 @@ err := q.WithContext(ctx).All(&users)
 
 ## Building Queries
 
-Instead of writing plain SQLs, `ozzo-dbx` allows you to build SQLs programmatically, which often leads to cleaner,
+Instead of writing plain SQLs, `dbx` allows you to build SQLs programmatically, which often leads to cleaner,
 more secure, and DB-agnostic code. You can build three types of queries: the SELECT queries, the data manipulation
 queries, and the schema manipulation queries.
 
@@ -379,7 +381,7 @@ other interesting work.
 
 ### Building Query Conditions
 
-`ozzo-dbx` supports very flexible and powerful query condition building which can be used to build SQL clauses
+`dbx` supports very flexible and powerful query condition building which can be used to build SQL clauses
 such as `WHERE`, `HAVING`, etc. For example,
 
 ```go
@@ -469,7 +471,7 @@ err := q.Execute()
 
 ## CRUD Operations
 
-Although ozzo-dbx is not an ORM, it does provide a very convenient way to do typical CRUD (Create, Read, Update, Delete)
+Although `dbx` is not an ORM, it does provide a very convenient way to do typical CRUD (Create, Read, Update, Delete)
 operations without the need of writing plain SQL statements.
 
 To use the CRUD feature, first define a struct type for a table. By default, a struct is associated with a table
@@ -632,7 +634,7 @@ type Customer struct {
 
 ## Quoting Table and Column Names
 
-Databases vary in quoting table and column names. To allow writing DB-agnostic SQLs, ozzo-dbx introduces a special
+Databases vary in quoting table and column names. To allow writing DB-agnostic SQLs, `dbx` introduces a special
 syntax in quoting table and column names. A word enclosed within `{{` and `}}` is treated as a table name and will
 be quoted according to the particular DB driver. Similarly, a word enclosed within `[[` and `]]` is treated as a 
 column name and will be quoted accordingly as well. For example, when working with a MySQL database, the following
@@ -707,10 +709,15 @@ can install:
 The following example shows how you can make use of these loggers.
 
 ```go
+package main
+
 import (
-	"fmt"
+	"context"
+	"database/sql"
 	"log"
-	"github.com/go-ozzo/ozzo-dbx"
+	"time"
+
+	"github.com/pocketbase/dbx"
 )
 
 func main() {
@@ -721,18 +728,18 @@ func main() {
 
 	// or you can use the following more flexible logging
 	db.QueryLogFunc = func(ctx context.Context, t time.Duration, sql string, rows *sql.Rows, err error) {
-		log.Printf("[%.2fms] Query SQL: %v", float64(t.Milliseconds()), sql))
+		log.Printf("[%.2fms] Query SQL: %v", float64(t.Milliseconds()), sql)
 	}
 	db.ExecLogFunc = func(ctx context.Context, t time.Duration, sql string, result sql.Result, err error) {
-		log.Printf("[%.2fms] Execute SQL: %v", float64(t.Milliseconds()), sql))
+		log.Printf("[%.2fms] Execute SQL: %v", float64(t.Milliseconds()), sql)
 	}
 	// ...
-)
+}
 ``` 
 
 ## Supporting New Databases
 
-While `ozzo-dbx` provides out-of-box query building support for most major relational databases, its open architecture
+While `dbx` provides out-of-box query building support for most major relational databases, its open architecture
 allows you to add support for new databases. The effort of adding support for a new database involves:
 
 * Create a struct that implements the `QueryBuilder` interface. You may use `BaseQueryBuilder` directly or extend it

@@ -12,12 +12,13 @@ import (
 	"strings"
 	"testing"
 
+	// @todo change to sqlite
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/assert"
 )
 
 const (
-	TestDSN     = "travis:@/ozzo_dbx_test?parseTime=true"
+	TestDSN     = "travis:@/pocketbase_dbx_test?parseTime=true"
 	FixtureFile = "testdata/mysql.sql"
 )
 
@@ -360,7 +361,7 @@ func getPreparedDB() *DB {
 	return db
 }
 
-// Naming according to issue 49 ( https://github.com/go-ozzo/ozzo-dbx/issues/49 )
+// Naming according to issue 49 ( https://github.com/pocketbase/dbx/issues/49 )
 
 type ArtistDAO struct {
 	nickname string

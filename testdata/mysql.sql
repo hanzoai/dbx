@@ -4,7 +4,7 @@
  * - host: 127.0.0.1
  * - user: travis
  * - pass: <none>
- * - database: ozzo_dbx_test
+ * - database: pocketbase_dbx_test
  */
 
 DROP TABLE IF EXISTS `order_item` CASCADE;

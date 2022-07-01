@@ -14,7 +14,7 @@ install:
   - go get golang.org/x/lint/golint
 
 before_script:
-  - mysql -e 'CREATE DATABASE ozzo_dbx_test;';
+  - mysql -e 'CREATE DATABASE pocketbase_dbx_test;';
 
 script:
   - test -z "`gofmt -l -d .`"
