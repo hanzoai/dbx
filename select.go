@@ -355,3 +355,42 @@ func (s *SelectQuery) Row(a ...interface{}) error {
 func (s *SelectQuery) Column(a interface{}) error {
 	return s.Build().WithContext(s.ctx).Column(a)
 }
+
+// QueryInfo represents a debug/info struct with exported SelectQuery fields.
+type QueryInfo struct {
+	Builder      Builder
+	Selects      []string
+	Distinct     bool
+	SelectOption string
+	From         []string
+	Where        Expression
+	Join         []JoinInfo
+	OrderBy      []string
+	GroupBy      []string
+	Having       Expression
+	Union        []UnionInfo
+	Limit        int64
+	Offset       int64
+	Params       Params
+}
+
+// Info exports common SelectQuery fields allowing to inspect the
+// current select query options.
+func (s *SelectQuery) Info() *QueryInfo {
+	return &QueryInfo{
+		Builder:      s.builder,
+		Selects:      s.selects,
+		Distinct:     s.distinct,
+		SelectOption: s.selectOption,
+		From:         s.from,
+		Where:        s.where,
+		Join:         s.join,
+		OrderBy:      s.orderBy,
+		GroupBy:      s.groupBy,
+		Having:       s.having,
+		Union:        s.union,
+		Limit:        s.limit,
+		Offset:       s.offset,
+		Params:       s.params,
+	}
+}
