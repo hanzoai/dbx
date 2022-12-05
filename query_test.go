@@ -44,6 +44,8 @@ func TestQuery_Execute(t *testing.T) {
 }
 
 type Customer struct {
+	scanned bool
+
 	ID      int
 	Email   string
 	Status  int
@@ -53,6 +55,11 @@ type Customer struct {
 
 func (m Customer) TableName() string {
 	return "customer"
+}
+
+func (m *Customer) PostScan() error {
+	m.scanned = true
+	return nil
 }
 
 type CustomerPtr struct {
@@ -119,6 +126,9 @@ func TestQuery_Rows(t *testing.T) {
 		assert.Equal(t, customers[2].ID, 3, "customers[2].ID")
 		assert.Equal(t, customers[2].Email, `user3@example.com`, "customers[2].Email")
 		assert.Equal(t, customers[2].Status, 2, "customers[2].Status")
+		assert.Equal(t, customers[0].scanned, true, "customers[0].scanned")
+		assert.Equal(t, customers[1].scanned, true, "customers[1].scanned")
+		assert.Equal(t, customers[2].scanned, true, "customers[2].scanned")
 	}
 
 	// Query.All() with slice of pointers
@@ -130,6 +140,9 @@ func TestQuery_Rows(t *testing.T) {
 		assert.Equal(t, customersPtrSlice[2].ID, 3, "customersPtrSlice[2].ID")
 		assert.Equal(t, customersPtrSlice[2].Email, `user3@example.com`, "customersPtrSlice[2].Email")
 		assert.Equal(t, customersPtrSlice[2].Status, 2, "customersPtrSlice[2].Status")
+		assert.Equal(t, customersPtrSlice[0].scanned, true, "customersPtrSlice[0].scanned")
+		assert.Equal(t, customersPtrSlice[1].scanned, true, "customersPtrSlice[1].scanned")
+		assert.Equal(t, customersPtrSlice[2].scanned, true, "customersPtrSlice[2].scanned")
 	}
 
 	var customers2 []NullStringMap
