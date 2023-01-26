@@ -401,16 +401,16 @@ func (e *BetweenExp) Build(db *DB, params Params) string {
 
 // Enclose surrounds the provided nonempty expression with parenthesis "()".
 func Enclose(exp Expression) Expression {
-	return &EncloseExpr{exp}
+	return &EncloseExp{exp}
 }
 
-// EncloseExpr represents a parenthesis enclosed expression.
-type EncloseExpr struct {
+// EncloseExp represents a parenthesis enclosed expression.
+type EncloseExp struct {
 	exp Expression
 }
 
 // Build converts an expression into a SQL fragment.
-func (e *EncloseExpr) Build(db *DB, params Params) string {
+func (e *EncloseExp) Build(db *DB, params Params) string {
 	str := e.exp.Build(db, params)
 
 	if str == "" {
