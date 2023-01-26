@@ -8,6 +8,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -107,7 +108,7 @@ func (q *Query) logSQL() string {
 		if str, ok := v.(string); ok {
 			sv = "'" + strings.Replace(str, "'", "''", -1) + "'"
 		} else if bs, ok := v.([]byte); ok {
-			sv = "'" + strings.Replace(string(bs), "'", "''", -1) + "'"
+			sv = "0x" + hex.EncodeToString(bs)
 		} else {
 			sv = fmt.Sprintf("%v", v)
 		}
