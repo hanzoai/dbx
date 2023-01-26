@@ -398,3 +398,24 @@ func (e *BetweenExp) Build(db *DB, params Params) string {
 	col := db.QuoteColumnName(e.col)
 	return fmt.Sprintf("%v %v {:%v} AND {:%v}", col, between, name1, name2)
 }
+
+// Enclose surrounds the provided nonempty expression with parenthesis "()".
+func Enclose(exp Expression) Expression {
+	return &EncloseExpr{exp}
+}
+
+// EncloseExpr represents a parenthesis enclosed expression.
+type EncloseExpr struct {
+	exp Expression
+}
+
+// Build converts an expression into a SQL fragment.
+func (e *EncloseExpr) Build(db *DB, params Params) string {
+	str := e.exp.Build(db, params)
+
+	if str == "" {
+		return ""
+	}
+
+	return "(" + str + ")"
+}

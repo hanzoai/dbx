@@ -183,3 +183,14 @@ func TestExistsExp(t *testing.T) {
 	e4 := NotExists(NewExp(""))
 	assert.Equal(t, e4.Build(nil, nil), "", `e4.Build()`)
 }
+
+func TestEncloseExp(t *testing.T) {
+	e1 := Enclose(NewExp(""))
+	assert.Equal(t, e1.Build(nil, nil), "", `e1.Build()`)
+
+	e2 := Enclose(NewExp("s1"))
+	assert.Equal(t, e2.Build(nil, nil), "(s1)", `e2.Build()`)
+
+	e3 := Enclose(NewExp("(s1)"))
+	assert.Equal(t, e3.Build(nil, nil), "((s1))", `e3.Build()`)
+}
