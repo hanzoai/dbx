@@ -10,6 +10,15 @@ import (
 	"reflect"
 )
 
+// ExecHookFunc executes before op allowing addtional custom handling, like auto fail/retry.
+type ExecHookFunc func(s *SelectQuery, op func() error) error
+
+// OneHookFunc executes right before the query populate the row result from One() call (aka. op).
+type OneHookFunc func(s *SelectQuery, a interface{}, op func(b interface{}) error) error
+
+// AllHookFunc executes right before the query populate the row result from All() call (aka. op).
+type AllHookFunc func(s *SelectQuery, sliceA interface{}, op func(sliceB interface{}) error) error
+
 // SelectQuery represents a DB-agnostic SELECT query.
 // It can be built into a DB-specific query by calling the Build() method.
 type SelectQuery struct {
@@ -34,6 +43,11 @@ type SelectQuery struct {
 	limit        int64
 	offset       int64
 	params       Params
+
+	// hooks
+	execHookFunc ExecHookFunc
+	oneHookFunc  OneHookFunc
+	allHookFunc  AllHookFunc
 }
 
 // JoinInfo contains the specification for a JOIN clause.
@@ -65,6 +79,31 @@ func NewSelectQuery(builder Builder, db *DB) *SelectQuery {
 		FieldMapper: db.FieldMapper,
 		TableMapper: db.TableMapper,
 	}
+}
+
+// WithExecHook associates the provided exec hook function with the query.
+//
+// It is called for every SelectQuery resolver (One(), All(), Row(), Rows(), Column()),
+// allowing you to implement auto fail/retry or any other additional handling.
+func (q *SelectQuery) WithExecHook(fn ExecHookFunc) *SelectQuery {
+	q.execHookFunc = fn
+	return q
+}
+
+// WithOneHook associates the provided hook function with the query,
+// called on q.One(), allowing you to implement custom struct scan based
+// on the One() argument and/or result.
+func (q *SelectQuery) WithOneHook(fn OneHookFunc) *SelectQuery {
+	q.oneHookFunc = fn
+	return q
+}
+
+// WithOneHook associates the provided hook function with the query,
+// called on q.All(), allowing you to implement custom slice scan based
+// on the All() argument and/or result.
+func (q *SelectQuery) WithAllHook(fn AllHookFunc) *SelectQuery {
+	q.allHookFunc = fn
+	return q
 }
 
 // Context returns the context associated with the query.
@@ -288,12 +327,21 @@ func (s *SelectQuery) Build() *Query {
 //
 // Note that when the query has no rows in the result set, an sql.ErrNoRows will be returned.
 func (s *SelectQuery) One(a interface{}) error {
-	if len(s.from) == 0 {
-		if tableName := s.TableMapper(a); tableName != "" {
-			s.from = []string{tableName}
+	var fn = func(b interface{}) error {
+		if len(s.from) == 0 {
+			if tableName := s.TableMapper(b); tableName != "" {
+				s.from = []string{tableName}
+			}
 		}
+		return s.Build().WithContext(s.ctx).One(b)
 	}
-	return s.Build().WithContext(s.ctx).One(a)
+
+	return s.execWrap(func() error {
+		if s.oneHookFunc != nil {
+			return s.oneHookFunc(s, a, fn)
+		}
+		return fn(a)
+	})
 }
 
 // Model selects the row with the specified primary key and populates the model with the row data.
@@ -303,22 +351,24 @@ func (s *SelectQuery) One(a interface{}) error {
 // to infer the name of the primary key column. Only simple primary key is supported. For composite primary keys,
 // please use Where() to specify the filtering condition.
 func (s *SelectQuery) Model(pk, model interface{}) error {
-	t := reflect.TypeOf(model)
-	if t.Kind() == reflect.Ptr {
-		t = t.Elem()
-	}
-	if t.Kind() != reflect.Struct {
-		return VarTypeError("must be a pointer to a struct")
-	}
-	si := getStructInfo(t, s.FieldMapper)
-	if len(si.pkNames) == 1 {
-		return s.AndWhere(HashExp{si.nameMap[si.pkNames[0]].dbName: pk}).One(model)
-	}
+	return s.execWrap(func() error {
+		t := reflect.TypeOf(model)
+		if t.Kind() == reflect.Ptr {
+			t = t.Elem()
+		}
+		if t.Kind() != reflect.Struct {
+			return VarTypeError("must be a pointer to a struct")
+		}
+		si := getStructInfo(t, s.FieldMapper)
+		if len(si.pkNames) == 1 {
+			return s.AndWhere(HashExp{si.nameMap[si.pkNames[0]].dbName: pk}).One(model)
+		}
 
-	if len(si.pkNames) == 0 {
-		return MissingPKError
-	}
-	return CompositePKError
+		if len(si.pkNames) == 0 {
+			return MissingPKError
+		}
+		return CompositePKError
+	})
 }
 
 // All executes the SELECT query and populates all rows of the result into a slice.
@@ -329,31 +379,60 @@ func (s *SelectQuery) Model(pk, model interface{}) error {
 // to be selected from by calling getTableName() which will return either the type name of the slice elements
 // or the TableName() method if the slice element implements the TableModel interface.
 func (s *SelectQuery) All(slice interface{}) error {
-	if len(s.from) == 0 {
-		if tableName := s.TableMapper(slice); tableName != "" {
-			s.from = []string{tableName}
+	fn := func(result interface{}) error {
+		if len(s.from) == 0 {
+			if tableName := s.TableMapper(result); tableName != "" {
+				s.from = []string{tableName}
+			}
 		}
+		return s.Build().WithContext(s.ctx).All(result)
 	}
-	return s.Build().WithContext(s.ctx).All(slice)
+
+	return s.execWrap(func() error {
+		if s.allHookFunc != nil {
+			return s.allHookFunc(s, slice, fn)
+		}
+		return fn(slice)
+	})
 }
 
 // Rows builds and executes the SELECT query and returns a Rows object for data retrieval purpose.
 // This is a shortcut to SelectQuery.Build().Rows()
 func (s *SelectQuery) Rows() (*Rows, error) {
-	return s.Build().WithContext(s.ctx).Rows()
+	var r *Rows
+
+	finalErr := s.execWrap(func() error {
+		var err error
+		r, err = s.Build().WithContext(s.ctx).Rows()
+		return err
+	})
+
+	return r, finalErr
 }
 
 // Row builds and executes the SELECT query and populates the first row of the result into the specified variables.
 // This is a shortcut to SelectQuery.Build().Row()
 func (s *SelectQuery) Row(a ...interface{}) error {
-	return s.Build().WithContext(s.ctx).Row(a...)
+	return s.execWrap(func() error {
+		return s.Build().WithContext(s.ctx).Row(a...)
+	})
 }
 
 // Column builds and executes the SELECT statement and populates the first column of the result into a slice.
 // Note that the parameter must be a pointer to a slice.
 // This is a shortcut to SelectQuery.Build().Column()
 func (s *SelectQuery) Column(a interface{}) error {
-	return s.Build().WithContext(s.ctx).Column(a)
+	return s.execWrap(func() error {
+		return s.Build().WithContext(s.ctx).Column(a)
+	})
+}
+
+func (s *SelectQuery) execWrap(op func() error) error {
+	if s.execHookFunc != nil {
+		return s.execHookFunc(s, op)
+	}
+
+	return op()
 }
 
 // QueryInfo represents a debug/info struct with exported SelectQuery fields.
