@@ -7,6 +7,7 @@ package dbx
 import (
 	ss "database/sql"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -397,5 +398,203 @@ func TestIssue13(t *testing.T) {
 	err = db.Model(&user3).Insert()
 	if assert.Nil(t, err) {
 		assert.NotZero(t, user2.ID)
+	}
+}
+
+func TestQueryWithExecHook(t *testing.T) {
+	db := getPreparedDB()
+	defer db.Close()
+
+	// error return
+	{
+		err := db.NewQuery("select * from user").
+			WithExecHook(func(q *Query, op func() error) error {
+				return errors.New("test")
+			}).
+			Row()
+
+		assert.Error(t, err)
+	}
+
+	// Row()
+	{
+		calls := 0
+		err := db.NewQuery("select * from user").
+			WithExecHook(func(q *Query, op func() error) error {
+				calls++
+				return nil
+			}).
+			Row()
+		assert.Nil(t, err)
+		assert.Equal(t, 1, calls, "Row()")
+	}
+
+	// One()
+	{
+		calls := 0
+		err := db.NewQuery("select * from user").
+			WithExecHook(func(q *Query, op func() error) error {
+				calls++
+				return nil
+			}).
+			One(nil)
+		assert.Nil(t, err)
+		assert.Equal(t, 1, calls, "One()")
+	}
+
+	// All()
+	{
+		calls := 0
+		err := db.NewQuery("select * from user").
+			WithExecHook(func(q *Query, op func() error) error {
+				calls++
+				return nil
+			}).
+			All(nil)
+		assert.Nil(t, err)
+		assert.Equal(t, 1, calls, "All()")
+	}
+
+	// Column()
+	{
+		calls := 0
+		err := db.NewQuery("select * from user").
+			WithExecHook(func(q *Query, op func() error) error {
+				calls++
+				return nil
+			}).
+			Column(nil)
+		assert.Nil(t, err)
+		assert.Equal(t, 1, calls, "Column()")
+	}
+
+	// Execute()
+	{
+		calls := 0
+		_, err := db.NewQuery("select * from user").
+			WithExecHook(func(q *Query, op func() error) error {
+				calls++
+				return nil
+			}).
+			Execute()
+		assert.Nil(t, err)
+		assert.Equal(t, 1, calls, "Execute()")
+	}
+
+	// op call
+	{
+		calls := 0
+		var id int
+		err := db.NewQuery("select id from user where id = 2").
+			WithExecHook(func(q *Query, op func() error) error {
+				calls++
+				return op()
+			}).
+			Row(&id)
+		assert.Nil(t, err)
+		assert.Equal(t, 1, calls, "op hook calls")
+		assert.Equal(t, 2, id, "id mismatch")
+	}
+}
+
+func TestQueryWithOneHook(t *testing.T) {
+	db := getPreparedDB()
+	defer db.Close()
+
+	// error return
+	{
+		err := db.NewQuery("select * from user").
+			WithOneHook(func(q *Query, a interface{}, op func(b interface{}) error) error {
+				return errors.New("test")
+			}).
+			One(nil)
+
+		assert.Error(t, err)
+	}
+
+	// hooks call order
+	{
+		hookCalls := []string{}
+		err := db.NewQuery("select * from user").
+			WithExecHook(func(q *Query, op func() error) error {
+				hookCalls = append(hookCalls, "exec")
+				return op()
+			}).
+			WithOneHook(func(q *Query, a interface{}, op func(b interface{}) error) error {
+				hookCalls = append(hookCalls, "one")
+				return nil
+			}).
+			One(nil)
+
+		assert.Nil(t, err)
+		assert.Equal(t, hookCalls, []string{"exec", "one"})
+	}
+
+	// op call
+	{
+		calls := 0
+		other := User{}
+		err := db.NewQuery("select id from user where id = 2").
+			WithOneHook(func(q *Query, a interface{}, op func(b interface{}) error) error {
+				calls++
+				return op(&other)
+			}).
+			One(nil)
+
+		assert.Nil(t, err)
+		assert.Equal(t, 1, calls, "hook calls")
+		assert.Equal(t, int64(2), other.ID, "replaced scan struct")
+	}
+}
+
+func TestQueryWithAllHook(t *testing.T) {
+	db := getPreparedDB()
+	defer db.Close()
+
+	// error return
+	{
+		err := db.NewQuery("select * from user").
+			WithAllHook(func(q *Query, a interface{}, op func(b interface{}) error) error {
+				return errors.New("test")
+			}).
+			All(nil)
+
+		assert.Error(t, err)
+	}
+
+	// hooks call order
+	{
+		hookCalls := []string{}
+		err := db.NewQuery("select * from user").
+			WithExecHook(func(q *Query, op func() error) error {
+				hookCalls = append(hookCalls, "exec")
+				return op()
+			}).
+			WithAllHook(func(q *Query, a interface{}, op func(b interface{}) error) error {
+				hookCalls = append(hookCalls, "all")
+				return nil
+			}).
+			All(nil)
+
+		assert.Nil(t, err)
+		assert.Equal(t, hookCalls, []string{"exec", "all"})
+	}
+
+	// op call
+	{
+		calls := 0
+		other := []User{}
+		err := db.NewQuery("select id from user order by id asc").
+			WithAllHook(func(q *Query, a interface{}, op func(b interface{}) error) error {
+				calls++
+				return op(&other)
+			}).
+			All(nil)
+
+		assert.Nil(t, err)
+		assert.Equal(t, 1, calls, "hook calls")
+		assert.Equal(t, 2, len(other), "users length")
+		assert.Equal(t, int64(1), other[0].ID, "user 1 id check")
+		assert.Equal(t, int64(2), other[1].ID, "user 2 id check")
 	}
 }
