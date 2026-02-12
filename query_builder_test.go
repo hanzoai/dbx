@@ -231,6 +231,9 @@ func TestQB_CombineUnion(t *testing.T) {
 	db := getDB()
 	qb := db.QueryBuilder()
 
-	sql := qb.CombineUnion("p1", "p2")
-	assert.Equal(t, "(p1) p2", sql)
+	sql := qb.CombineUnion("p1", "")
+	assert.Equal(t, "p1", sql, "empty union clause")
+
+	sql = qb.CombineUnion("p1", "p2")
+	assert.Equal(t, "(p1) p2", sql, "nonempty union clause")
 }
