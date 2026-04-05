@@ -3,7 +3,7 @@ package dbx_test
 import (
 	"fmt"
 
-	"github.com/pocketbase/dbx"
+	"github.com/hanzoai/dbx"
 )
 
 // This example shows how to populate DB data in different ways.
