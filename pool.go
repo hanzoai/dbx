@@ -10,8 +10,10 @@ import (
 	"hash/fnv"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // ConnectFunc opens a *DB for the given file path.
@@ -33,11 +35,24 @@ type Pool struct {
 	Concurrent    *DB // reads
 	Nonconcurrent *DB // writes (serialized)
 	refCount      int64
+	lastAccess    int64 // UnixNano, updated on Acquire
 }
 
-func (p *Pool) Acquire() { atomic.AddInt64(&p.refCount, 1) }
+func (p *Pool) Acquire() {
+	atomic.StoreInt64(&p.lastAccess, time.Now().UnixNano())
+	atomic.AddInt64(&p.refCount, 1)
+}
 func (p *Pool) Release() { atomic.AddInt64(&p.refCount, -1) }
 func (p *Pool) InUse() bool { return atomic.LoadInt64(&p.refCount) > 0 }
+
+// LastAccess returns when this pool was last acquired.
+func (p *Pool) LastAccess() time.Time {
+	ns := atomic.LoadInt64(&p.lastAccess)
+	if ns == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, ns)
+}
 
 func (p *Pool) Close() error {
 	var firstErr error
@@ -57,7 +72,7 @@ func (p *Pool) Close() error {
 // PoolConfig tunes the pool manager.
 type PoolConfig struct {
 	// MaxPools is the max number of open database file pools.
-	// Default: 256. Rule of thumb: 64 * NumCPU.
+	// Default: 2000. Hard cap: 2000.
 	MaxPools int
 
 	// ReadConns per DB. Default: 4. Recommended: NumCPU.
@@ -66,16 +81,28 @@ type PoolConfig struct {
 	// ReadIdleConns per DB. Default: 2.
 	ReadIdleConns int
 
-	// NumShards for lock partitioning. Default: 16. Power of 2.
+	// NumShards for lock partitioning. Default: runtime.NumCPU(). Power of 2 recommended.
 	NumShards int
+
+	// IdleTimeout is how long a pool can sit unused before the sweeper closes it.
+	// Default: 30s. Set to 0 to disable idle eviction.
+	IdleTimeout time.Duration
+
+	// SweepInterval is how often the idle sweeper runs. Default: 10s.
+	SweepInterval time.Duration
 
 	// Connect opens a *DB for a path. Default: DefaultSQLiteConnect.
 	Connect ConnectFunc
 }
 
+const maxPoolsCap = 2000
+
 func (c *PoolConfig) defaults() {
 	if c.MaxPools <= 0 {
-		c.MaxPools = 256
+		c.MaxPools = 2000
+	}
+	if c.MaxPools > maxPoolsCap {
+		c.MaxPools = maxPoolsCap
 	}
 	if c.ReadConns <= 0 {
 		c.ReadConns = 4
@@ -84,7 +111,16 @@ func (c *PoolConfig) defaults() {
 		c.ReadIdleConns = 2
 	}
 	if c.NumShards <= 0 {
-		c.NumShards = 16
+		c.NumShards = runtime.NumCPU()
+		if c.NumShards < 1 {
+			c.NumShards = 1
+		}
+	}
+	if c.IdleTimeout == 0 {
+		c.IdleTimeout = 30 * time.Second
+	}
+	if c.SweepInterval == 0 {
+		c.SweepInterval = 10 * time.Second
 	}
 	if c.Connect == nil {
 		c.Connect = DefaultSQLiteConnect
@@ -94,11 +130,22 @@ func (c *PoolConfig) defaults() {
 // PoolStats tracks pool manager metrics.
 // Each field is cache-line padded to prevent false sharing.
 type PoolStats struct {
-	Hits      int64; _ [7]int64
-	Misses    int64; _ [7]int64
-	Evictions int64; _ [7]int64
-	Opens     int64; _ [7]int64
-	Errors    int64; _ [7]int64
+	Hits          int64; _ [7]int64
+	Misses        int64; _ [7]int64
+	Evictions     int64; _ [7]int64
+	IdleEvictions int64; _ [7]int64
+	Opens         int64; _ [7]int64
+	Errors        int64; _ [7]int64
+}
+
+// HitRate returns the cache hit ratio (0.0 to 1.0).
+// Returns 0 if no requests have been made.
+func (s *PoolStats) HitRate() float64 {
+	total := s.Hits + s.Misses
+	if total == 0 {
+		return 0
+	}
+	return float64(s.Hits) / float64(total)
 }
 
 type poolShard struct {
@@ -124,11 +171,32 @@ func (s *poolShard) evictOneLocked() *Pool {
 	return nil
 }
 
+// evictIdleLocked removes all pools idle longer than cutoff.
+// Returns pools to close (caller closes without lock held).
+func (s *poolShard) evictIdleLocked(cutoff time.Time) []*Pool {
+	var toClose []*Pool
+	elem := s.lru.Back()
+	for elem != nil {
+		entry := elem.Value.(*lruEntry)
+		prev := elem.Prev()
+		if !entry.pool.InUse() && entry.pool.LastAccess().Before(cutoff) {
+			s.lru.Remove(elem)
+			delete(s.pools, entry.key)
+			toClose = append(toClose, entry.pool)
+		}
+		elem = prev
+	}
+	return toClose
+}
+
 // PoolManager manages an LRU cache of SQLite connection pools.
 //
 // Sharded RWMutex design: cache hits use RLock (non-blocking),
 // only misses and evictions take an exclusive lock. Each shard
 // operates independently for minimal contention at scale.
+//
+// A background sweeper goroutine closes idle pools (configurable
+// via IdleTimeout). The sweeper runs every SweepInterval.
 //
 // Services are stateless — any instance serves any tenant by
 // loading the correct SQLite file from shared storage.
@@ -136,9 +204,12 @@ type PoolManager struct {
 	shards []poolShard
 	config PoolConfig
 	stats  PoolStats
+	done   chan struct{}
+	wg     sync.WaitGroup
 }
 
-// NewPoolManager creates a sharded LRU pool manager.
+// NewPoolManager creates a sharded LRU pool manager and starts
+// the idle eviction sweeper.
 func NewPoolManager(config PoolConfig) *PoolManager {
 	config.defaults()
 	shards := make([]poolShard, config.NumShards)
@@ -152,7 +223,45 @@ func NewPoolManager(config PoolConfig) *PoolManager {
 			lru:   list.New(),
 		}
 	}
-	return &PoolManager{shards: shards, config: config}
+	pm := &PoolManager{
+		shards: shards,
+		config: config,
+		done:   make(chan struct{}),
+	}
+	if config.IdleTimeout > 0 {
+		pm.wg.Add(1)
+		go pm.sweepLoop()
+	}
+	return pm
+}
+
+func (m *PoolManager) sweepLoop() {
+	defer m.wg.Done()
+	ticker := time.NewTicker(m.config.SweepInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-m.done:
+			return
+		case <-ticker.C:
+			m.sweepIdle()
+		}
+	}
+}
+
+func (m *PoolManager) sweepIdle() {
+	cutoff := time.Now().Add(-m.config.IdleTimeout)
+	for i := range m.shards {
+		s := &m.shards[i]
+		s.mu.Lock()
+		toClose := s.evictIdleLocked(cutoff)
+		s.mu.Unlock()
+		for _, p := range toClose {
+			p.Close()
+			atomic.AddInt64(&m.stats.IdleEvictions, 1)
+			atomic.AddInt64(&m.stats.Evictions, 1)
+		}
+	}
 }
 
 func (m *PoolManager) shard(key string) *poolShard {
@@ -252,18 +361,21 @@ func (m *PoolManager) openPool(dbPath string) (*Pool, error) {
 		Path:          dbPath,
 		Concurrent:    concurrent,
 		Nonconcurrent: nonconcurrent,
+		lastAccess:    time.Now().UnixNano(),
 	}, nil
 }
 
 // Stats returns a metrics snapshot (lock-free atomic reads).
 func (m *PoolManager) Stats() PoolStats {
-	return PoolStats{
-		Hits:      atomic.LoadInt64(&m.stats.Hits),
-		Misses:    atomic.LoadInt64(&m.stats.Misses),
-		Evictions: atomic.LoadInt64(&m.stats.Evictions),
-		Opens:     atomic.LoadInt64(&m.stats.Opens),
-		Errors:    atomic.LoadInt64(&m.stats.Errors),
+	s := PoolStats{
+		Hits:          atomic.LoadInt64(&m.stats.Hits),
+		Misses:        atomic.LoadInt64(&m.stats.Misses),
+		Evictions:     atomic.LoadInt64(&m.stats.Evictions),
+		IdleEvictions: atomic.LoadInt64(&m.stats.IdleEvictions),
+		Opens:         atomic.LoadInt64(&m.stats.Opens),
+		Errors:        atomic.LoadInt64(&m.stats.Errors),
 	}
+	return s
 }
 
 // Len returns total open pools across all shards.
@@ -277,8 +389,17 @@ func (m *PoolManager) Len() int {
 	return total
 }
 
-// Close closes all pools. Call on shutdown.
+// Close stops the idle sweeper and closes all pools. Call on shutdown.
 func (m *PoolManager) Close() {
+	// Signal sweeper to stop
+	select {
+	case <-m.done:
+		// already closed
+	default:
+		close(m.done)
+	}
+	m.wg.Wait()
+
 	for i := range m.shards {
 		s := &m.shards[i]
 		s.mu.Lock()
