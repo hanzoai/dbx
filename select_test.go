@@ -177,3 +177,49 @@ func TestSelectWithBuildHook(t *testing.T) {
 
 	assert.Equal(t, "SELECT `id` FROM `user`", buildSQL)
 }
+
+// TestSelectQuery_Copy verifies Copy() produces an independent clone.
+// Every slice/map field must be deep-copied so mutations on the clone
+// never bleed back into the original.
+func TestSelectQuery_Copy(t *testing.T) {
+	db := getDB()
+
+	orig := db.Select("id", "name").
+		From("users").
+		Where(NewExp("age>30")).
+		AndOrderBy("id").
+		GroupBy("status").
+		Limit(10).
+		Offset(5).
+		Bind(Params{"k": 1})
+
+	clone := orig.Copy()
+
+	// Mutate the clone — none of these should touch orig.
+	clone.Select("COUNT(*)").
+		From("other").
+		OrderBy("z").
+		GroupBy("type").
+		Limit(99).
+		Offset(0).
+		AndBind(Params{"k2": 2})
+
+	// Original columns intact.
+	assert.Equal(t, []string{"id", "name"}, orig.selects, "selects")
+	assert.Equal(t, []string{"users"}, orig.from, "from")
+	assert.Equal(t, []string{"id"}, orig.orderBy, "orderBy")
+	assert.Equal(t, []string{"status"}, orig.groupBy, "groupBy")
+	assert.Equal(t, int64(10), orig.limit, "limit")
+	assert.Equal(t, int64(5), orig.offset, "offset")
+	assert.Equal(t, 1, len(orig.params), "params len")
+
+	// Clone sees its own changes.
+	assert.Equal(t, []string{"COUNT(*)"}, clone.selects, "clone selects")
+	assert.Equal(t, []string{"other"}, clone.from, "clone from")
+	assert.Equal(t, int64(99), clone.limit, "clone limit")
+	assert.Equal(t, 2, len(clone.params), "clone params len")
+
+	// Copy(nil) is safe.
+	var nilQ *SelectQuery
+	assert.Nil(t, nilQ.Copy(), "nil receiver")
+}
