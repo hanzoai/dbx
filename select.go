@@ -72,6 +72,63 @@ func NewSelectQuery(builder Builder, db *DB) *SelectQuery {
 	}
 }
 
+// Copy returns a deep copy of the SelectQuery. Every slice and map is
+// duplicated so callers may freely mutate the clone without affecting the
+// original. The builder, buildHook, context, and embedded Expression trees
+// are shared by reference — Expression implementations in this package are
+// append-only / immutable once constructed, and the builder is a DB-scoped
+// singleton.
+//
+// Use Copy when branching a query along multiple terminators (e.g.
+// COUNT(*) then the same base query with the original column list). Any
+// chain that mutates the returned SelectQuery (Select, Where, OrderBy, …)
+// will NOT alter the receiver.
+func (s *SelectQuery) Copy() *SelectQuery {
+	if s == nil {
+		return nil
+	}
+	c := &SelectQuery{
+		FieldMapper:  s.FieldMapper,
+		TableMapper:  s.TableMapper,
+		builder:      s.builder,
+		ctx:          s.ctx,
+		buildHook:    s.buildHook,
+		preFragment:  s.preFragment,
+		postFragment: s.postFragment,
+		distinct:     s.distinct,
+		selectOption: s.selectOption,
+		where:        s.where,
+		having:       s.having,
+		limit:        s.limit,
+		offset:       s.offset,
+	}
+	if s.selects != nil {
+		c.selects = append([]string(nil), s.selects...)
+	}
+	if s.from != nil {
+		c.from = append([]string(nil), s.from...)
+	}
+	if s.orderBy != nil {
+		c.orderBy = append([]string(nil), s.orderBy...)
+	}
+	if s.groupBy != nil {
+		c.groupBy = append([]string(nil), s.groupBy...)
+	}
+	if s.join != nil {
+		c.join = append([]JoinInfo(nil), s.join...)
+	}
+	if s.union != nil {
+		c.union = append([]UnionInfo(nil), s.union...)
+	}
+	if s.params != nil {
+		c.params = Params{}
+		for k, v := range s.params {
+			c.params[k] = v
+		}
+	}
+	return c
+}
+
 // WithBuildHook runs the provided hook function with the query created on Build().
 func (q *SelectQuery) WithBuildHook(fn BuildHookFunc) *SelectQuery {
 	q.buildHook = fn
