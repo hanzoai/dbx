@@ -1,6 +1,6 @@
 module github.com/hanzoai/dbx
 
-go 1.25.0
+go 1.26.3
 
 require (
 	github.com/go-sql-driver/mysql v1.4.1
