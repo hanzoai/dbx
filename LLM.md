@@ -1,4 +1,4 @@
-# dbx — AI Assistant Context
+# dbx
 
 dbx
 [![Go Report Card](https://goreportcard.com/badge/github.com/pocketbase/dbx)](https://goreportcard.com/report/github.com/pocketbase/dbx)
