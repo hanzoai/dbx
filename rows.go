@@ -79,7 +79,7 @@ func (r *Rows) ScanStruct(a interface{}) error {
 
 	for i, col := range cols {
 		if fi, ok := si.dbNameMap[col]; ok {
-			refs[i] = fi.getField(rv).Addr().Interface()
+			refs[i] = scanDest(fi.getField(rv))
 		} else {
 			refs[i] = &sql.NullString{}
 		}
@@ -161,7 +161,7 @@ func (r *Rows) all(slice interface{}) error {
 		refs := make([]interface{}, len(cols))
 		for i, col := range cols {
 			if fi, ok := si.dbNameMap[col]; ok {
-				refs[i] = fi.getField(ev).Addr().Interface()
+				refs[i] = scanDest(fi.getField(ev))
 			} else {
 				refs[i] = &sql.NullString{}
 			}
