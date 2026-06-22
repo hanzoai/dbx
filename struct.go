@@ -5,7 +5,10 @@
 package dbx
 
 import (
+	"bytes"
 	"database/sql"
+	"database/sql/driver"
+	"encoding/json"
 	"reflect"
 	"regexp"
 	"strings"
@@ -49,10 +52,68 @@ var (
 
 	fieldRegex      = regexp.MustCompile(`([^A-Z_])([A-Z])`)
 	scannerType     = reflect.TypeOf((*sql.Scanner)(nil)).Elem()
+	valuerType      = reflect.TypeOf((*driver.Valuer)(nil)).Elem()
 	postScannerType = reflect.TypeOf((*PostScanner)(nil)).Elem()
 	structInfoMap   = make(map[structInfoMapKey]*structInfo)
 	muStructInfoMap sync.Mutex
 )
+
+// jsonField reports whether a struct field of type t must be persisted as JSON
+// text because the database/sql driver cannot handle it directly — composite
+// types (slices other than []byte, maps, and non-time structs) that do not
+// already implement their own Scanner/Valuer. This lets models declare plain
+// Go fields (e.g. []SomeStruct, []string, map[string]X) and have the data layer
+// transparently store them as JSON, on both write (Value) and read (Scan).
+func jsonField(t reflect.Type) bool {
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	if reflect.PtrTo(t).Implements(scannerType) || reflect.PtrTo(t).Implements(valuerType) {
+		return false
+	}
+	switch t.Kind() {
+	case reflect.Slice:
+		return t.Elem().Kind() != reflect.Uint8 // []byte stays a BLOB
+	case reflect.Map, reflect.Array:
+		return true
+	case reflect.Struct:
+		return !(t.PkgPath() == "time" && t.Name() == "Time")
+	default:
+		return false
+	}
+}
+
+// jsonScanner adapts an addressable composite field into a sql.Scanner that
+// JSON-decodes the stored text. NULL/empty leaves the field at its zero value.
+type jsonScanner struct{ dst reflect.Value }
+
+func (j jsonScanner) Scan(src interface{}) error {
+	if src == nil {
+		return nil
+	}
+	var b []byte
+	switch s := src.(type) {
+	case []byte:
+		b = s
+	case string:
+		b = []byte(s)
+	default:
+		return nil
+	}
+	if len(bytes.TrimSpace(b)) == 0 {
+		return nil
+	}
+	return json.Unmarshal(b, j.dst.Addr().Interface())
+}
+
+// scanDest returns the scan target for a field: composite fields go through the
+// JSON adapter, everything else scans directly into the field address.
+func scanDest(field reflect.Value) interface{} {
+	if jsonField(field.Type()) {
+		return jsonScanner{dst: field}
+	}
+	return field.Addr().Interface()
+}
 
 // PostScanner is an optional interface used by ScanStruct.
 type PostScanner interface {
@@ -134,7 +195,9 @@ func (s *structValue) columns(include, exclude []string) map[string]interface{} 
 	return v
 }
 
-// getValue returns the field value for the given struct value.
+// getValue returns the field value for the given struct value. Composite fields
+// (see jsonField) are marshaled to JSON text so the SQL driver can bind them;
+// this is the write-side counterpart of scanDest.
 func (fi *fieldInfo) getValue(a reflect.Value) interface{} {
 	for _, i := range fi.path {
 		a = a.Field(i)
@@ -144,6 +207,13 @@ func (fi *fieldInfo) getValue(a reflect.Value) interface{} {
 			}
 			a = a.Elem()
 		}
+	}
+	if jsonField(a.Type()) {
+		b, err := json.Marshal(a.Interface())
+		if err != nil {
+			return a.Interface()
+		}
+		return string(b)
 	}
 	return a.Interface()
 }
