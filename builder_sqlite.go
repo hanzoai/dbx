@@ -7,6 +7,7 @@ package dbx
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -96,6 +97,54 @@ func (b *SqliteBuilder) Model(model interface{}) *ModelQuery {
 
 // QuoteSimpleTableName quotes a simple table name.
 // A simple table name does not contain any schema prefix.
+// Upsert creates a Query that represents an INSERT ... ON CONFLICT DO UPDATE
+// statement.
+//
+// SQLite has supported this since 3.24 (2018), but SqliteBuilder never
+// overrode it, so every SQLite caller fell through to BaseBuilder.Upsert and
+// got a query carrying LastError = "Upsert is not supported". PgsqlBuilder
+// implemented it all along. The result was that callers on SQLite wrote raw
+// INSERT ... ON CONFLICT strings by hand and concluded the builder could not
+// express it — 58 such sites in hanzoai/cloud alone — when the gap was one
+// missing override in a package we own.
+//
+// The generated SQL matches the Postgres form, which is also SQLite's: the
+// conflict target is optional, and omitting it means "any uniqueness
+// constraint".
+func (b *SqliteBuilder) Upsert(table string, cols Params, constraints ...string) *Query {
+	q := b.Insert(table, cols)
+
+	names := []string{}
+	for name := range cols {
+		names = append(names, name)
+	}
+	// Sorted so the statement is deterministic: an Upsert that renders a
+	// different string each call defeats statement caching and makes tests
+	// flaky for no reason. Map iteration order is not a feature.
+	sort.Strings(names)
+
+	lines := []string{}
+	for _, name := range names {
+		value := cols[name]
+		name = b.db.QuoteColumnName(name)
+		if e, ok := value.(Expression); ok {
+			lines = append(lines, name+"="+e.Build(b.db, q.params))
+		} else {
+			lines = append(lines, fmt.Sprintf("%v={:p%v}", name, len(q.params)))
+			q.params[fmt.Sprintf("p%v", len(q.params))] = value
+		}
+	}
+
+	if len(constraints) > 0 {
+		c := b.quoteColumns(constraints)
+		q.sql += " ON CONFLICT (" + c + ") DO UPDATE SET " + strings.Join(lines, ", ")
+	} else {
+		q.sql += " ON CONFLICT DO UPDATE SET " + strings.Join(lines, ", ")
+	}
+
+	return b.NewQuery(q.sql).Bind(q.params)
+}
+
 func (b *SqliteBuilder) QuoteSimpleTableName(s string) string {
 	if strings.ContainsAny(s, "`") {
 		return s

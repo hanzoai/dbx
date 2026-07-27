@@ -5,6 +5,7 @@
 package dbx
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -120,4 +121,48 @@ func getSqliteBuilder() Builder {
 	b := NewSqliteBuilder(db, db.sqlDB)
 	db.Builder = b
 	return b
+}
+
+// SqliteBuilder never overrode Upsert, so every SQLite caller fell through to
+// BaseBuilder.Upsert and got LastError = "Upsert is not supported" — while
+// PgsqlBuilder had implemented it all along. Callers concluded the builder could
+// not express ON CONFLICT and hand-wrote raw SQL instead. SQLite has supported
+// the syntax since 3.24.
+func TestSqliteBuilder_Upsert(t *testing.T) {
+	b := getSqliteBuilder()
+
+	t.Run("NoLongerUnsupported", func(t *testing.T) {
+		q := b.Upsert("users", Params{"name": "Alice"})
+		if q.LastError != nil {
+			t.Fatalf("Upsert reported %v — the SQLite override is missing again", q.LastError)
+		}
+	})
+
+	t.Run("WithConflictTarget", func(t *testing.T) {
+		q := b.Upsert("users", Params{"name": "Alice", "age": 30}, "id")
+		if q.LastError != nil {
+			t.Fatal(q.LastError)
+		}
+		if !strings.Contains(q.SQL(), "ON CONFLICT (`id`) DO UPDATE SET") {
+			t.Errorf("missing conflict target: %s", q.SQL())
+		}
+	})
+
+	t.Run("WithoutConflictTargetMeansAnyConstraint", func(t *testing.T) {
+		q := b.Upsert("users", Params{"name": "Alice"})
+		if !strings.Contains(q.SQL(), "ON CONFLICT DO UPDATE SET") {
+			t.Errorf("expected bare ON CONFLICT: %s", q.SQL())
+		}
+	})
+
+	t.Run("DeterministicColumnOrder", func(t *testing.T) {
+		// Map iteration order is random. An Upsert that renders differently each
+		// call defeats statement caching and makes tests flaky for no reason.
+		first := b.Upsert("users", Params{"z": 1, "a": 2, "m": 3}, "id").SQL()
+		for i := 0; i < 20; i++ {
+			if got := b.Upsert("users", Params{"z": 1, "a": 2, "m": 3}, "id").SQL(); got != first {
+				t.Fatalf("SQL is not deterministic:\n  %s\n  %s", first, got)
+			}
+		}
+	})
 }
