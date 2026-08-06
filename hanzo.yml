@@ -1,0 +1,8 @@
+# Build gate only, deliberately. The suite is NOT runnable here: db_test.go pins
+# TestDSN = "travis:@/pocketbase_dbx_test" with no env override and no skip, so
+# `go test ./...` panics on dial tcp 127.0.0.1:3306 rather than reporting. `go vet
+# ./...` is red on two pre-existing unkeyed-field warnings in model_query_test.go.
+# `go build ./...` is what is left that fails when, and only when, the code breaks.
+test:
+  - name: build
+    run: go build ./...
