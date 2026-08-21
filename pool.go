@@ -14,6 +14,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/hanzoai/sqlite"
 )
 
 // ConnectFunc opens a *DB for the given file path.
@@ -23,8 +25,7 @@ type ConnectFunc func(dbPath string) (*DB, error)
 // DefaultSQLiteConnect opens a SQLite database with WAL mode,
 // 10s busy timeout, and standard pragmas for concurrent access.
 func DefaultSQLiteConnect(dbPath string) (*DB, error) {
-	pragmas := "?_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)&_pragma=journal_size_limit(200000000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)&_pragma=temp_store(MEMORY)&_pragma=cache_size(-16000)"
-	return Open("sqlite", dbPath+pragmas)
+	return Open("sqlite", sqliteDSN(dbPath))
 }
 
 // Pool holds a dual-connection pair for one SQLite database.
@@ -410,4 +411,20 @@ func (m *PoolManager) Close() {
 		s.lru.Init()
 		s.mu.Unlock()
 	}
+}
+
+// sqliteDSN addresses dbPath with the pragmas above. The driver builds it: the
+// two SQLite backends spell a pragma differently in a DSN and each ignores the
+// other's spelling silently, so a hand-written profile applies on one build and
+// evaporates on the other.
+func sqliteDSN(dbPath string) string {
+	return sqlite.PragmaDSN(dbPath, []sqlite.Pragma{
+		{Name: "busy_timeout", Value: "10000"},
+		{Name: "journal_mode", Value: "WAL"},
+		{Name: "journal_size_limit", Value: "200000000"},
+		{Name: "synchronous", Value: "NORMAL"},
+		{Name: "foreign_keys", Value: "ON"},
+		{Name: "temp_store", Value: "MEMORY"},
+		{Name: "cache_size", Value: "-16000"},
+	})
 }
