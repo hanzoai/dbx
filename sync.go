@@ -166,23 +166,18 @@ func structToTableName(t reflect.Type, opts *SyncOptions) string {
 	return defaultFieldName(t.Name())
 }
 
+// defaultFieldName is the name a table and its columns get from a Go type, and it
+// is DefaultFieldMapFunc because there is only one such name.
+//
+// It had its own spelling of CamelCase → snake_case, agreeing with the query
+// builder's everywhere except after a digit: this one broke a word only when the
+// preceding character was a letter, so Fallback1Up became fallback1up here and
+// fallback1_up in every SELECT, INSERT and UPDATE. A table created by Sync then
+// had a column nothing would ever read or write, and the column every statement
+// named did not exist — so the model worked against a database created some other
+// way and failed against its own.
 func defaultFieldName(name string) string {
-	// CamelCase → snake_case
-	var result strings.Builder
-	for i, r := range name {
-		if r >= 'A' && r <= 'Z' {
-			if i > 0 {
-				prev := name[i-1]
-				if prev >= 'a' && prev <= 'z' {
-					result.WriteByte('_')
-				}
-			}
-			result.WriteRune(r + 32) // toLower
-		} else {
-			result.WriteRune(r)
-		}
-	}
-	return result.String()
+	return DefaultFieldMapFunc(name)
 }
 
 func goTypeToSQL(t reflect.Type) string {
