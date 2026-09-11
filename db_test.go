@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	TestDSN     = "travis:@/pocketbase_dbx_test?parseTime=true"
+	TestDSN     = "travis:@/dbx_test?parseTime=true"
 	FixtureFile = "testdata/mysql.sql"
 )
 
@@ -361,7 +361,7 @@ func getPreparedDB() *DB {
 	return db
 }
 
-// Naming according to issue 49 ( https://github.com/pocketbase/dbx/issues/49 )
+// TableMapper can prefix the table name of a model.
 
 type ArtistDAO struct {
 	nickname string

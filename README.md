@@ -1,13 +1,13 @@
 <p align="center"><img src=".github/hero.svg" alt="dbx" width="880"></p>
 
 dbx
-[![Go Report Card](https://goreportcard.com/badge/github.com/pocketbase/dbx)](https://goreportcard.com/report/github.com/pocketbase/dbx)
-[![GoDoc](https://godoc.org/github.com/pocketbase/dbx?status.svg)](https://pkg.go.dev/github.com/pocketbase/dbx)
+[![Go Report Card](https://goreportcard.com/badge/github.com/hanzoai/dbx)](https://goreportcard.com/report/github.com/hanzoai/dbx)
+[![GoDoc](https://pkg.go.dev/badge/github.com/hanzoai/dbx.svg)](https://pkg.go.dev/github.com/hanzoai/dbx)
 ================================================================================
 
 > ⚠️ This is a maintained fork of [go-ozzo/ozzo-dbx](https://github.com/go-ozzo/ozzo-dbx) (see [#103](https://github.com/go-ozzo/ozzo-dbx/issues/103)).
 >
-> Currently the changes are primarily related to better SQLite support and some other minor improvements. For more details please refer to the [Releases CHANGELOG](https://github.com/pocketbase/dbx/releases).
+> Currently the changes are primarily related to better SQLite support and some other minor improvements. For more details please refer to the [Releases CHANGELOG](https://github.com/hanzoai/dbx/releases).
 
 
 ## Summary
@@ -62,7 +62,7 @@ Go 1.13 or above.
 Run the following command to install the package:
 
 ```
-go get github.com/pocketbase/dbx
+go get github.com/hanzoai/dbx
 ```
 
 In addition, install the specific DB driver package for the kind of database to be used. Please refer to
@@ -100,7 +100,7 @@ The following code snippet shows how you can use this package in order to access
 package main
 
 import (
-	"github.com/pocketbase/dbx"
+	"github.com/hanzoai/dbx"
 	_ "github.com/go-sql-driver/mysql"
 )
 
@@ -142,7 +142,7 @@ And the following example shows how to use the query building capability of this
 package main
 
 import (
-	"github.com/pocketbase/dbx"
+	"github.com/hanzoai/dbx"
 	_ "github.com/go-sql-driver/mysql"
 )
 
@@ -719,7 +719,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/pocketbase/dbx"
+	"github.com/hanzoai/dbx"
 )
 
 func main() {
