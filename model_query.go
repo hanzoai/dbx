@@ -29,7 +29,7 @@ var (
 	CompositePKError = errors.New("composite primary key is not supported")
 )
 
-func NewModelQuery(model interface{}, fieldMapFunc FieldMapFunc, db *DB, builder Builder) *ModelQuery {
+func NewModelQuery(model any, fieldMapFunc FieldMapFunc, db *DB, builder Builder) *ModelQuery {
 	q := &ModelQuery{
 		db:      db,
 		ctx:     db.ctx,
@@ -122,14 +122,14 @@ func insertAndReturnPK(db *DB, query *Query, pkName string) (int64, error) {
 	return pkValue, err
 }
 
-func isAutoInc(value interface{}) bool {
+func isAutoInc(value any) bool {
 	v := reflect.ValueOf(value)
 	switch v.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return v.Int() == 0
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 		return v.Uint() == 0
-	case reflect.Ptr:
+	case reflect.Pointer:
 		return v.IsNil() || isAutoInc(v.Elem())
 	case reflect.Invalid:
 		return true

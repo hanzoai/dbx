@@ -504,7 +504,7 @@ func TestQueryWithOneHook(t *testing.T) {
 	// error return
 	{
 		err := db.NewQuery("select * from user").
-			WithOneHook(func(q *Query, a interface{}, op func(b interface{}) error) error {
+			WithOneHook(func(q *Query, a any, op func(b any) error) error {
 				return errors.New("test")
 			}).
 			One(nil)
@@ -520,7 +520,7 @@ func TestQueryWithOneHook(t *testing.T) {
 				hookCalls = append(hookCalls, "exec")
 				return op()
 			}).
-			WithOneHook(func(q *Query, a interface{}, op func(b interface{}) error) error {
+			WithOneHook(func(q *Query, a any, op func(b any) error) error {
 				hookCalls = append(hookCalls, "one")
 				return nil
 			}).
@@ -535,7 +535,7 @@ func TestQueryWithOneHook(t *testing.T) {
 		calls := 0
 		other := User{}
 		err := db.NewQuery("select id from user where id = 2").
-			WithOneHook(func(q *Query, a interface{}, op func(b interface{}) error) error {
+			WithOneHook(func(q *Query, a any, op func(b any) error) error {
 				calls++
 				return op(&other)
 			}).
@@ -554,7 +554,7 @@ func TestQueryWithAllHook(t *testing.T) {
 	// error return
 	{
 		err := db.NewQuery("select * from user").
-			WithAllHook(func(q *Query, a interface{}, op func(b interface{}) error) error {
+			WithAllHook(func(q *Query, a any, op func(b any) error) error {
 				return errors.New("test")
 			}).
 			All(nil)
@@ -570,7 +570,7 @@ func TestQueryWithAllHook(t *testing.T) {
 				hookCalls = append(hookCalls, "exec")
 				return op()
 			}).
-			WithAllHook(func(q *Query, a interface{}, op func(b interface{}) error) error {
+			WithAllHook(func(q *Query, a any, op func(b any) error) error {
 				hookCalls = append(hookCalls, "all")
 				return nil
 			}).
@@ -585,7 +585,7 @@ func TestQueryWithAllHook(t *testing.T) {
 		calls := 0
 		other := []User{}
 		err := db.NewQuery("select id from user order by id asc").
-			WithAllHook(func(q *Query, a interface{}, op func(b interface{}) error) error {
+			WithAllHook(func(q *Query, a any, op func(b any) error) error {
 				calls++
 				return op(&other)
 			}).

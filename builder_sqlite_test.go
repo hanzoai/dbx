@@ -159,7 +159,7 @@ func TestSqliteBuilder_Upsert(t *testing.T) {
 		// Map iteration order is random. An Upsert that renders differently each
 		// call defeats statement caching and makes tests flaky for no reason.
 		first := b.Upsert("users", Params{"z": 1, "a": 2, "m": 3}, "id").SQL()
-		for i := 0; i < 20; i++ {
+		for range 20 {
 			if got := b.Upsert("users", Params{"z": 1, "a": 2, "m": 3}, "id").SQL(); got != first {
 				t.Fatalf("SQL is not deterministic:\n  %s\n  %s", first, got)
 			}

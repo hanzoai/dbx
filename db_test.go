@@ -8,7 +8,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"io/ioutil"
+	"os"
 	"strings"
 	"testing"
 
@@ -345,12 +345,11 @@ func getDB() *DB {
 
 func getPreparedDB() *DB {
 	db := getDB()
-	s, err := ioutil.ReadFile(FixtureFile)
+	s, err := os.ReadFile(FixtureFile)
 	if err != nil {
 		panic(err)
 	}
-	lines := strings.Split(string(s), ";")
-	for _, line := range lines {
+	for line := range strings.SplitSeq(string(s), ";") {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
@@ -373,7 +372,7 @@ func (ArtistDAO) TableName() string {
 
 func Test_TableNameWithPrefix(t *testing.T) {
 	db := NewFromDB(nil, "mysql")
-	db.TableMapper = func(a interface{}) string {
+	db.TableMapper = func(a any) string {
 		return "tbl_" + GetTableName(a)
 	}
 	assert.Equal(t, "tbl_artists", db.TableMapper(ArtistDAO{}))

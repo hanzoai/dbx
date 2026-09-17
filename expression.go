@@ -6,6 +6,7 @@ package dbx
 
 import (
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 )
@@ -25,7 +26,7 @@ type Expression interface {
 //
 // HashExp also handles nil values and slice values. For example, HashExp{"level": []interface{}{1, 2}, "dept": nil}
 // will generate: "level" IN (1, 2) AND "dept" IS NULL.
-type HashExp map[string]interface{}
+type HashExp map[string]any
 
 // NewExp generates an expression with the specified SQL fragment and the optional binding parameters.
 func NewExp(e string, params ...Params) Expression {
@@ -52,13 +53,13 @@ func Or(exps ...Expression) Expression {
 
 // In generates an IN expression for the specified column and the list of allowed values.
 // If values is empty, a SQL "0=1" will be generated which represents a false expression.
-func In(col string, values ...interface{}) Expression {
+func In(col string, values ...any) Expression {
 	return &InExp{col, values, false}
 }
 
 // NotIn generates an NOT IN expression for the specified column and the list of disallowed values.
 // If values is empty, an empty string will be returned indicating a true expression.
-func NotIn(col string, values ...interface{}) Expression {
+func NotIn(col string, values ...any) Expression {
 	return &InExp{col, values, true}
 }
 
@@ -144,13 +145,13 @@ func NotExists(exp Expression) Expression {
 
 // Between generates a BETWEEN expression.
 // For example, Between("age", 10, 30) generates: "age" BETWEEN 10 AND 30
-func Between(col string, from, to interface{}) Expression {
+func Between(col string, from, to any) Expression {
 	return &BetweenExp{col, from, to, false}
 }
 
 // NotBetween generates a NOT BETWEEN expression.
 // For example, NotBetween("age", 10, 30) generates: "age" NOT BETWEEN 10 AND 30
-func NotBetween(col string, from, to interface{}) Expression {
+func NotBetween(col string, from, to any) Expression {
 	return &BetweenExp{col, from, to, true}
 }
 
@@ -165,9 +166,7 @@ func (e *Exp) Build(db *DB, params Params) string {
 	if len(e.params) == 0 {
 		return e.e
 	}
-	for k, v := range e.params {
-		params[k] = v
-	}
+	maps.Copy(params, e.params)
 	return e.e
 }
 
@@ -195,8 +194,8 @@ func (e HashExp) Build(db *DB, params Params) string {
 			if sql := value.(Expression).Build(db, params); sql != "" {
 				parts = append(parts, "("+sql+")")
 			}
-		case []interface{}:
-			in := In(name, value.([]interface{})...)
+		case []any:
+			in := In(name, value.([]any)...)
 			if sql := in.Build(db, params); sql != "" {
 				parts = append(parts, sql)
 			}
@@ -256,7 +255,7 @@ func (e *AndOrExp) Build(db *DB, params Params) string {
 // InExp represents an "IN" or "NOT IN" expression.
 type InExp struct {
 	col    string
-	values []interface{}
+	values []any
 	not    bool
 }
 
@@ -381,7 +380,7 @@ func (e *ExistsExp) Build(db *DB, params Params) string {
 // BetweenExp represents a BETWEEN or a NOT BETWEEN expression.
 type BetweenExp struct {
 	col      string
-	from, to interface{}
+	from, to any
 	not      bool
 }
 

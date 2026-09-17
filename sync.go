@@ -39,7 +39,7 @@ type SyncOptions struct {
 // Usage:
 //
 //	db.Sync(User{}, Organization{}, Application{})
-func (db *DB) Sync(models ...interface{}) error {
+func (db *DB) Sync(models ...any) error {
 	for _, model := range models {
 		if err := db.syncOne(model, nil); err != nil {
 			return err
@@ -49,7 +49,7 @@ func (db *DB) Sync(models ...interface{}) error {
 }
 
 // SyncWith creates or updates tables with custom options.
-func (db *DB) SyncWith(opts SyncOptions, models ...interface{}) error {
+func (db *DB) SyncWith(opts SyncOptions, models ...any) error {
 	for _, model := range models {
 		if err := db.syncOne(model, &opts); err != nil {
 			return err
@@ -58,9 +58,9 @@ func (db *DB) SyncWith(opts SyncOptions, models ...interface{}) error {
 	return nil
 }
 
-func (db *DB) syncOne(model interface{}, opts *SyncOptions) error {
+func (db *DB) syncOne(model any, opts *SyncOptions) error {
 	t := reflect.TypeOf(model)
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t.Kind() != reflect.Struct {
@@ -100,8 +100,7 @@ type columnDef struct {
 
 func extractColumns(t reflect.Type, opts *SyncOptions) []columnDef {
 	var cols []columnDef
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
+	for field := range t.Fields() {
 		if !field.IsExported() {
 			continue
 		}
@@ -181,7 +180,7 @@ func defaultFieldName(name string) string {
 }
 
 func goTypeToSQL(t reflect.Type) string {
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	switch t.Kind() {

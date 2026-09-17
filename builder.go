@@ -25,7 +25,7 @@ type Builder interface {
 	Select(...string) *SelectQuery
 	// ModelQuery returns a new ModelQuery object that can be used to perform model insertion, update, and deletion.
 	// The parameter to this method should be a pointer to the model struct that needs to be inserted, updated, or deleted.
-	Model(interface{}) *ModelQuery
+	Model(any) *ModelQuery
 
 	// GeneratePlaceholder generates an anonymous parameter placeholder with the given parameter ID.
 	GeneratePlaceholder(int) string
@@ -274,12 +274,13 @@ func (b *BaseBuilder) CreateTable(table string, cols map[string]string, options 
 		columns = append(columns, b.db.QuoteColumnName(name)+" "+cols[name])
 	}
 
-	sql := fmt.Sprintf("CREATE TABLE %v (%v)", b.db.QuoteTableName(table), strings.Join(columns, ", "))
+	var sql strings.Builder
+	fmt.Fprintf(&sql, "CREATE TABLE %v (%v)", b.db.QuoteTableName(table), strings.Join(columns, ", "))
 	for _, opt := range options {
-		sql += " " + opt
+		sql.WriteString(" " + opt)
 	}
 
-	return b.NewQuery(sql)
+	return b.NewQuery(sql.String())
 }
 
 // RenameTable creates a Query that can be used to rename a table.
@@ -346,16 +347,17 @@ func (b *BaseBuilder) DropPrimaryKey(table, name string) *Query {
 // The optional "options" parameters will be appended to the SQL statement. They can be used to
 // specify options such as "ON DELETE CASCADE".
 func (b *BaseBuilder) AddForeignKey(table, name string, cols, refCols []string, refTable string, options ...string) *Query {
-	sql := fmt.Sprintf("ALTER TABLE %v ADD CONSTRAINT %v FOREIGN KEY (%v) REFERENCES %v (%v)",
+	var sql strings.Builder
+	fmt.Fprintf(&sql, "ALTER TABLE %v ADD CONSTRAINT %v FOREIGN KEY (%v) REFERENCES %v (%v)",
 		b.db.QuoteTableName(table),
 		b.db.QuoteColumnName(name),
 		b.quoteColumns(cols),
 		b.db.QuoteTableName(refTable),
 		b.quoteColumns(refCols))
 	for _, opt := range options {
-		sql += " " + opt
+		sql.WriteString(" " + opt)
 	}
-	return b.NewQuery(sql)
+	return b.NewQuery(sql.String())
 }
 
 // DropForeignKey creates a Query that can be used to remove the named foreign key constraint from a table.

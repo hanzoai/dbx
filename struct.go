@@ -20,7 +20,7 @@ type (
 	FieldMapFunc func(string) string
 
 	// TableMapFunc converts a sample struct into a DB table name.
-	TableMapFunc func(a interface{}) string
+	TableMapFunc func(a any) string
 
 	structInfo struct {
 		nameMap   map[string]*fieldInfo // mapping from struct field names to field infos
@@ -51,9 +51,9 @@ var (
 	DbTag = "db"
 
 	fieldRegex      = regexp.MustCompile(`([^A-Z_])([A-Z])`)
-	scannerType     = reflect.TypeOf((*sql.Scanner)(nil)).Elem()
-	valuerType      = reflect.TypeOf((*driver.Valuer)(nil)).Elem()
-	postScannerType = reflect.TypeOf((*PostScanner)(nil)).Elem()
+	scannerType     = reflect.TypeFor[sql.Scanner]()
+	valuerType      = reflect.TypeFor[driver.Valuer]()
+	postScannerType = reflect.TypeFor[PostScanner]()
 	structInfoMap   = make(map[structInfoMapKey]*structInfo)
 	muStructInfoMap sync.Mutex
 )
@@ -65,10 +65,10 @@ var (
 // Go fields (e.g. []SomeStruct, []string, map[string]X) and have the data layer
 // transparently store them as JSON, on both write (Value) and read (Scan).
 func jsonField(t reflect.Type) bool {
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
-	if reflect.PtrTo(t).Implements(scannerType) || reflect.PtrTo(t).Implements(valuerType) {
+	if reflect.PointerTo(t).Implements(scannerType) || reflect.PointerTo(t).Implements(valuerType) {
 		return false
 	}
 	switch t.Kind() {
@@ -87,7 +87,7 @@ func jsonField(t reflect.Type) bool {
 // JSON-decodes the stored text. NULL/empty leaves the field at its zero value.
 type jsonScanner struct{ dst reflect.Value }
 
-func (j jsonScanner) Scan(src interface{}) error {
+func (j jsonScanner) Scan(src any) error {
 	if src == nil {
 		return nil
 	}
@@ -108,7 +108,7 @@ func (j jsonScanner) Scan(src interface{}) error {
 
 // scanDest returns the scan target for a field: composite fields go through the
 // JSON adapter, everything else scans directly into the field address.
-func scanDest(field reflect.Value) interface{} {
+func scanDest(field reflect.Value) any {
 	if jsonField(field.Type()) {
 		return jsonScanner{dst: field}
 	}
@@ -150,9 +150,9 @@ func getStructInfo(a reflect.Type, mapper FieldMapFunc) *structInfo {
 	return si
 }
 
-func newStructValue(model interface{}, fieldMapFunc FieldMapFunc, tableMapFunc TableMapFunc) *structValue {
+func newStructValue(model any, fieldMapFunc FieldMapFunc, tableMapFunc TableMapFunc) *structValue {
 	value := reflect.ValueOf(model)
-	if value.Kind() != reflect.Ptr || value.Elem().Kind() != reflect.Struct || value.IsNil() {
+	if value.Kind() != reflect.Pointer || value.Elem().Kind() != reflect.Struct || value.IsNil() {
 		return nil
 	}
 
@@ -164,7 +164,7 @@ func newStructValue(model interface{}, fieldMapFunc FieldMapFunc, tableMapFunc T
 }
 
 // pk returns the primary key values indexed by the corresponding primary key column names.
-func (s *structValue) pk() map[string]interface{} {
+func (s *structValue) pk() map[string]any {
 	if len(s.pkNames) == 0 {
 		return nil
 	}
@@ -172,8 +172,8 @@ func (s *structValue) pk() map[string]interface{} {
 }
 
 // columns returns the struct field values indexed by their corresponding DB column names.
-func (s *structValue) columns(include, exclude []string) map[string]interface{} {
-	v := make(map[string]interface{}, len(s.nameMap))
+func (s *structValue) columns(include, exclude []string) map[string]any {
+	v := make(map[string]any, len(s.nameMap))
 	if len(include) == 0 {
 		for _, fi := range s.nameMap {
 			v[fi.dbName] = fi.getValue(s.value)
@@ -198,10 +198,10 @@ func (s *structValue) columns(include, exclude []string) map[string]interface{} 
 // getValue returns the field value for the given struct value. Composite fields
 // (see jsonField) are marshaled to JSON text so the SQL driver can bind them;
 // this is the write-side counterpart of scanDest.
-func (fi *fieldInfo) getValue(a reflect.Value) interface{} {
+func (fi *fieldInfo) getValue(a reflect.Value) any {
 	for _, i := range fi.path {
 		a = a.Field(i)
-		if a.Kind() == reflect.Ptr {
+		if a.Kind() == reflect.Pointer {
 			if a.IsNil() {
 				return nil
 			}
@@ -229,7 +229,7 @@ func (fi *fieldInfo) getField(a reflect.Value) reflect.Value {
 
 func (si *structInfo) build(a reflect.Type, path []int, namePrefix, dbNamePrefix string, mapper FieldMapFunc) {
 	n := a.NumField()
-	for i := 0; i < n; i++ {
+	for i := range n {
 		field := a.Field(i)
 		tag := field.Tag.Get(DbTag)
 
@@ -243,7 +243,7 @@ func (si *structInfo) build(a reflect.Type, path []int, namePrefix, dbNamePrefix
 		path2 = append(path2, i)
 
 		ft := field.Type
-		if ft.Kind() == reflect.Ptr {
+		if ft.Kind() == reflect.Pointer {
 			ft = ft.Elem()
 		}
 
@@ -293,7 +293,7 @@ func isNestedStruct(t reflect.Type) bool {
 	if t.PkgPath() == "time" && t.Name() == "Time" {
 		return false
 	}
-	return t.Kind() == reflect.Struct && !reflect.PtrTo(t).Implements(scannerType)
+	return t.Kind() == reflect.Struct && !reflect.PointerTo(t).Implements(scannerType)
 }
 
 func parseTag(tag string) (string, bool) {
@@ -319,7 +319,7 @@ func concat(s1, s2 string) string {
 // indirect dereferences pointers and returns the actual value it points to.
 // If a pointer is nil, it will be initialized with a new value.
 func indirect(v reflect.Value) reflect.Value {
-	for v.Kind() == reflect.Ptr {
+	for v.Kind() == reflect.Pointer {
 		if v.IsNil() {
 			v.Set(reflect.New(v.Type().Elem()))
 		}
@@ -331,17 +331,17 @@ func indirect(v reflect.Value) reflect.Value {
 // GetTableName implements the default way of determining the table name corresponding to the given model struct
 // or slice of structs. To get the actual table name for a model, you should use DB.TableMapFunc() instead.
 // Do not call this method in a model's TableName() method because it will cause infinite loop.
-func GetTableName(a interface{}) string {
+func GetTableName(a any) string {
 	if tm, ok := a.(TableModel); ok {
 		v := reflect.ValueOf(a)
-		if v.Kind() == reflect.Ptr && v.IsNil() {
+		if v.Kind() == reflect.Pointer && v.IsNil() {
 			a = reflect.New(v.Type().Elem()).Interface()
 			return a.(TableModel).TableName()
 		}
 		return tm.TableName()
 	}
 	t := reflect.TypeOf(a)
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t.Kind() == reflect.Slice {

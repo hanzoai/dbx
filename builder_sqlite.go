@@ -7,6 +7,7 @@ package dbx
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 )
@@ -26,26 +27,24 @@ func (b *SqliteQueryBuilder) BuildUnion(unions []UnionInfo, params Params) strin
 		return ""
 	}
 
-	sql := ""
+	var sql strings.Builder
 
 	for i, union := range unions {
 		if i > 0 {
-			sql += " "
+			sql.WriteString(" ")
 		}
 
-		for k, v := range union.Query.params {
-			params[k] = v
-		}
+		maps.Copy(params, union.Query.params)
 
 		u := "UNION"
 		if union.All {
 			u = "UNION ALL"
 		}
 
-		sql += fmt.Sprintf("%v %v", u, union.Query.sql)
+		fmt.Fprintf(&sql, "%v %v", u, union.Query.sql)
 	}
 
-	return sql
+	return sql.String()
 }
 
 // CombineUnion combines the nonempty unionClause with the provided sql string.
@@ -91,7 +90,7 @@ func (b *SqliteBuilder) Select(cols ...string) *SelectQuery {
 
 // Model returns a new ModelQuery object that can be used to perform model-based DB operations.
 // The model passed to this method should be a pointer to a model struct.
-func (b *SqliteBuilder) Model(model interface{}) *ModelQuery {
+func (b *SqliteBuilder) Model(model any) *ModelQuery {
 	return NewModelQuery(model, b.db.FieldMapper, b.db, b)
 }
 

@@ -43,7 +43,7 @@ func (p *Pool) Acquire() {
 	atomic.StoreInt64(&p.lastAccess, time.Now().UnixNano())
 	atomic.AddInt64(&p.refCount, 1)
 }
-func (p *Pool) Release() { atomic.AddInt64(&p.refCount, -1) }
+func (p *Pool) Release()    { atomic.AddInt64(&p.refCount, -1) }
 func (p *Pool) InUse() bool { return atomic.LoadInt64(&p.refCount) > 0 }
 
 // LastAccess returns when this pool was last acquired.
@@ -112,10 +112,7 @@ func (c *PoolConfig) defaults() {
 		c.ReadIdleConns = 2
 	}
 	if c.NumShards <= 0 {
-		c.NumShards = runtime.NumCPU()
-		if c.NumShards < 1 {
-			c.NumShards = 1
-		}
+		c.NumShards = max(runtime.NumCPU(), 1)
 	}
 	if c.IdleTimeout == 0 {
 		c.IdleTimeout = 30 * time.Second
@@ -131,12 +128,18 @@ func (c *PoolConfig) defaults() {
 // PoolStats tracks pool manager metrics.
 // Each field is cache-line padded to prevent false sharing.
 type PoolStats struct {
-	Hits          int64; _ [7]int64
-	Misses        int64; _ [7]int64
-	Evictions     int64; _ [7]int64
-	IdleEvictions int64; _ [7]int64
-	Opens         int64; _ [7]int64
-	Errors        int64; _ [7]int64
+	Hits          int64
+	_             [7]int64
+	Misses        int64
+	_             [7]int64
+	Evictions     int64
+	_             [7]int64
+	IdleEvictions int64
+	_             [7]int64
+	Opens         int64
+	_             [7]int64
+	Errors        int64
+	_             [7]int64
 }
 
 // HitRate returns the cache hit ratio (0.0 to 1.0).
@@ -214,10 +217,7 @@ type PoolManager struct {
 func NewPoolManager(config PoolConfig) *PoolManager {
 	config.defaults()
 	shards := make([]poolShard, config.NumShards)
-	perShard := config.MaxPools / config.NumShards
-	if perShard < 1 {
-		perShard = 1
-	}
+	perShard := max(config.MaxPools/config.NumShards, 1)
 	for i := range shards {
 		shards[i] = poolShard{
 			pools: make(map[string]*list.Element, perShard),
@@ -309,10 +309,7 @@ func (m *PoolManager) Get(dbPath string) (*Pool, error) {
 	atomic.AddInt64(&m.stats.Opens, 1)
 
 	// Two-phase eviction
-	maxPerShard := m.config.MaxPools / len(m.shards)
-	if maxPerShard < 1 {
-		maxPerShard = 1
-	}
+	maxPerShard := max(m.config.MaxPools/len(m.shards), 1)
 	var toClose []*Pool
 	for s.lru.Len() >= maxPerShard {
 		evicted := s.evictOneLocked()

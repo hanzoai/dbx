@@ -76,20 +76,20 @@ func Test_structValue_columns(t *testing.T) {
 	}
 	sv := newStructValue(&customer, DefaultFieldMapFunc, GetTableName)
 	cols := sv.columns(nil, nil)
-	assert.Equal(t, map[string]interface{}{"id": 1, "name": "abc", "status": 2, "email": "abc@example.com", "address": sql.NullString{}}, cols)
+	assert.Equal(t, map[string]any{"id": 1, "name": "abc", "status": 2, "email": "abc@example.com", "address": sql.NullString{}}, cols)
 
 	cols = sv.columns([]string{"ID", "name"}, nil)
-	assert.Equal(t, map[string]interface{}{"id": 1}, cols)
+	assert.Equal(t, map[string]any{"id": 1}, cols)
 
 	cols = sv.columns([]string{"ID", "Name"}, []string{"ID"})
-	assert.Equal(t, map[string]interface{}{"name": "abc"}, cols)
+	assert.Equal(t, map[string]any{"name": "abc"}, cols)
 
 	cols = sv.columns(nil, []string{"ID", "Address"})
-	assert.Equal(t, map[string]interface{}{"name": "abc", "status": 2, "email": "abc@example.com"}, cols)
+	assert.Equal(t, map[string]any{"name": "abc", "status": 2, "email": "abc@example.com"}, cols)
 
 	sv = newStructValue(&customer, nil, GetTableName)
 	cols = sv.columns([]string{"ID", "Name"}, []string{"ID"})
-	assert.Equal(t, map[string]interface{}{"Name": "abc"}, cols)
+	assert.Equal(t, map[string]any{"Name": "abc"}, cols)
 }
 
 func TestIssue37(t *testing.T) {
@@ -105,7 +105,7 @@ func TestIssue37(t *testing.T) {
 	}{customer, "20"}
 	sv := newStructValue(&ev, nil, GetTableName)
 	cols := sv.columns([]string{"ID", "Status"}, nil)
-	assert.Equal(t, map[string]interface{}{"ID": 1, "Status": "20"}, cols)
+	assert.Equal(t, map[string]any{"ID": 1, "Status": "20"}, cols)
 
 	ev2 := struct {
 		Status string
@@ -113,7 +113,7 @@ func TestIssue37(t *testing.T) {
 	}{"20", customer}
 	sv = newStructValue(&ev2, nil, GetTableName)
 	cols = sv.columns([]string{"ID", "Status"}, nil)
-	assert.Equal(t, map[string]interface{}{"ID": 1, "Status": "20"}, cols)
+	assert.Equal(t, map[string]any{"ID": 1, "Status": "20"}, cols)
 }
 
 type MyCustomer struct{}

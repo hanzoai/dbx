@@ -19,7 +19,7 @@ type (
 	// This method takes one or multiple parameters. If a single parameter
 	// is provided, it will be treated as the log message. If multiple parameters
 	// are provided, they will be passed to fmt.Sprintf() to generate the log message.
-	LogFunc func(format string, a ...interface{})
+	LogFunc func(format string, a ...any)
 
 	// PerfFunc is called when a query finishes execution.
 	// The query execution time is passed to this function so that the DB performance

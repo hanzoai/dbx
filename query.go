@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 )
@@ -19,25 +20,25 @@ import (
 type ExecHookFunc func(q *Query, op func() error) error
 
 // OneHookFunc executes right before the query populate the row result from One() call (aka. op).
-type OneHookFunc func(q *Query, a interface{}, op func(b interface{}) error) error
+type OneHookFunc func(q *Query, a any, op func(b any) error) error
 
 // AllHookFunc executes right before the query populate the row result from All() call (aka. op).
-type AllHookFunc func(q *Query, sliceA interface{}, op func(sliceB interface{}) error) error
+type AllHookFunc func(q *Query, sliceA any, op func(sliceB any) error) error
 
 // Params represents a list of parameter values to be bound to a SQL statement.
 // The map keys are the parameter names while the map values are the corresponding parameter values.
-type Params map[string]interface{}
+type Params map[string]any
 
 // Executor prepares, executes, or queries a SQL statement.
 type Executor interface {
 	// Exec executes a SQL statement
-	Exec(query string, args ...interface{}) (sql.Result, error)
+	Exec(query string, args ...any) (sql.Result, error)
 	// ExecContext executes a SQL statement with the given context
-	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 	// Query queries a SQL statement
-	Query(query string, args ...interface{}) (*sql.Rows, error)
+	Query(query string, args ...any) (*sql.Rows, error)
 	// QueryContext queries a SQL statement with the given context
-	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	// Prepare creates a prepared statement
 	Prepare(query string) (*sql.Stmt, error)
 }
@@ -191,9 +192,7 @@ func (q *Query) Bind(params Params) *Query {
 	if len(q.params) == 0 {
 		q.params = params
 	} else {
-		for k, v := range params {
-			q.params[k] = v
-		}
+		maps.Copy(q.params, params)
 	}
 	return q
 }
@@ -218,7 +217,7 @@ func (q *Query) execute() (result sql.Result, err error) {
 		return
 	}
 
-	var params []interface{}
+	var params []any
 	params, err = replacePlaceholders(q.placeholders, q.params)
 	if err != nil {
 		return
@@ -256,7 +255,7 @@ func (q *Query) execute() (result sql.Result, err error) {
 // Refer to Rows.ScanStruct() and Rows.ScanMap() for more details on how to specify
 // the variable to be populated.
 // Note that when the query has no rows in the result set, an sql.ErrNoRows will be returned.
-func (q *Query) One(a interface{}) error {
+func (q *Query) One(a any) error {
 	return q.execWrap(func() error {
 		rows, err := q.Rows()
 		if err != nil {
@@ -275,7 +274,7 @@ func (q *Query) One(a interface{}) error {
 // The slice must be given as a pointer. Each slice element must be either a struct or a NullStringMap.
 // Refer to Rows.ScanStruct() and Rows.ScanMap() for more details on how each slice element can be.
 // If the query returns no row, the slice will be an empty slice (not nil).
-func (q *Query) All(slice interface{}) error {
+func (q *Query) All(slice any) error {
 	return q.execWrap(func() error {
 		rows, err := q.Rows()
 		if err != nil {
@@ -293,7 +292,7 @@ func (q *Query) All(slice interface{}) error {
 // Row executes the SQL statement and populates the first row of the result into a list of variables.
 // Note that the number of the variables should match to that of the columns in the query result.
 // Note that when the query has no rows in the result set, an sql.ErrNoRows will be returned.
-func (q *Query) Row(a ...interface{}) error {
+func (q *Query) Row(a ...any) error {
 	return q.execWrap(func() error {
 		rows, err := q.Rows()
 		if err != nil {
@@ -305,7 +304,7 @@ func (q *Query) Row(a ...interface{}) error {
 
 // Column executes the SQL statement and populates the first column of the result into a slice.
 // Note that the parameter must be a pointer to a slice.
-func (q *Query) Column(a interface{}) error {
+func (q *Query) Column(a any) error {
 	return q.execWrap(func() error {
 		rows, err := q.Rows()
 		if err != nil {
@@ -323,7 +322,7 @@ func (q *Query) Rows() (rows *Rows, err error) {
 		return
 	}
 
-	var params []interface{}
+	var params []any
 	params, err = replacePlaceholders(q.placeholders, q.params)
 	if err != nil {
 		return
@@ -367,12 +366,12 @@ func (q *Query) execWrap(op func() error) error {
 }
 
 // replacePlaceholders converts a list of named parameters into a list of anonymous parameters.
-func replacePlaceholders(placeholders []string, params Params) ([]interface{}, error) {
+func replacePlaceholders(placeholders []string, params Params) ([]any, error) {
 	if len(placeholders) == 0 {
 		return nil, nil
 	}
 
-	var result []interface{}
+	var result []any
 	for _, name := range placeholders {
 		if value, ok := params[name]; ok {
 			result = append(result, value)

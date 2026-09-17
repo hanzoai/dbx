@@ -6,6 +6,7 @@ package dbx
 
 import (
 	"context"
+	"maps"
 	"reflect"
 )
 
@@ -122,9 +123,7 @@ func (s *SelectQuery) Copy() *SelectQuery {
 	}
 	if s.params != nil {
 		c.params = Params{}
-		for k, v := range s.params {
-			c.params[k] = v
-		}
+		maps.Copy(c.params, s.params)
 	}
 	return c
 }
@@ -321,9 +320,7 @@ func (s *SelectQuery) AndBind(params Params) *SelectQuery {
 	if len(s.params) == 0 {
 		s.params = params
 	} else {
-		for k, v := range params {
-			s.params[k] = v
-		}
+		maps.Copy(s.params, params)
 	}
 	return s
 }
@@ -331,9 +328,7 @@ func (s *SelectQuery) AndBind(params Params) *SelectQuery {
 // Build builds the SELECT query and returns an executable Query object.
 func (s *SelectQuery) Build() *Query {
 	params := Params{}
-	for k, v := range s.params {
-		params[k] = v
-	}
+	maps.Copy(params, s.params)
 
 	qb := s.builder.QueryBuilder()
 
@@ -382,7 +377,7 @@ func (s *SelectQuery) Build() *Query {
 // or the TableName() method if the variable implements the TableModel interface.
 //
 // Note that when the query has no rows in the result set, an sql.ErrNoRows will be returned.
-func (s *SelectQuery) One(a interface{}) error {
+func (s *SelectQuery) One(a any) error {
 	if len(s.from) == 0 {
 		if tableName := s.TableMapper(a); tableName != "" {
 			s.from = []string{tableName}
@@ -398,9 +393,9 @@ func (s *SelectQuery) One(a interface{}) error {
 // it will use the model struct to determine which table to select data from. It will also use the model
 // to infer the name of the primary key column. Only simple primary key is supported. For composite primary keys,
 // please use Where() to specify the filtering condition.
-func (s *SelectQuery) Model(pk, model interface{}) error {
+func (s *SelectQuery) Model(pk, model any) error {
 	t := reflect.TypeOf(model)
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t.Kind() != reflect.Struct {
@@ -425,7 +420,7 @@ func (s *SelectQuery) Model(pk, model interface{}) error {
 // If the query does not specify a "from" clause, the method will try to infer the name of the table
 // to be selected from by calling getTableName() which will return either the type name of the slice elements
 // or the TableName() method if the slice element implements the TableModel interface.
-func (s *SelectQuery) All(slice interface{}) error {
+func (s *SelectQuery) All(slice any) error {
 	if len(s.from) == 0 {
 		if tableName := s.TableMapper(slice); tableName != "" {
 			s.from = []string{tableName}
@@ -443,14 +438,14 @@ func (s *SelectQuery) Rows() (*Rows, error) {
 
 // Row builds and executes the SELECT query and populates the first row of the result into the specified variables.
 // This is a shortcut to SelectQuery.Build().Row()
-func (s *SelectQuery) Row(a ...interface{}) error {
+func (s *SelectQuery) Row(a ...any) error {
 	return s.Build().Row(a...)
 }
 
 // Column builds and executes the SELECT statement and populates the first column of the result into a slice.
 // Note that the parameter must be a pointer to a slice.
 // This is a shortcut to SelectQuery.Build().Column()
-func (s *SelectQuery) Column(a interface{}) error {
+func (s *SelectQuery) Column(a any) error {
 	return s.Build().Column(a)
 }
 

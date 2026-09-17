@@ -83,12 +83,10 @@ func TestModelQuery_Insert(t *testing.T) {
 	{
 		// inserting with embedded structures
 		customer := CustomerEmbedded{
-			Id:    100,
-			Email: &email,
-			InnerCustomer: InnerCustomer{
-				Name:   &name,
-				Status: sql.NullInt64{1, true},
-			},
+			Id:     100,
+			Email:  &email,
+			Name:   &name,
+			Status: sql.NullInt64{1, true},
 		}
 		err := db.Model(&customer).Insert()
 		if assert.Nil(t, err) {

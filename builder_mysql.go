@@ -41,7 +41,7 @@ func (b *MysqlBuilder) Select(cols ...string) *SelectQuery {
 
 // Model returns a new ModelQuery object that can be used to perform model-based DB operations.
 // The model passed to this method should be a pointer to a model struct.
-func (b *MysqlBuilder) Model(model interface{}) *ModelQuery {
+func (b *MysqlBuilder) Model(model any) *ModelQuery {
 	return NewModelQuery(model, b.db.FieldMapper, b.db, b)
 }
 

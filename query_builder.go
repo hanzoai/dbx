@@ -7,6 +7,7 @@ package dbx
 import (
 	"bytes"
 	"fmt"
+	"maps"
 	"regexp"
 	"strings"
 )
@@ -184,21 +185,19 @@ func (q *BaseQueryBuilder) BuildUnion(unions []UnionInfo, params Params) string 
 	if len(unions) == 0 {
 		return ""
 	}
-	sql := ""
+	var sql strings.Builder
 	for i, union := range unions {
 		if i > 0 {
-			sql += " "
+			sql.WriteString(" ")
 		}
-		for k, v := range union.Query.params {
-			params[k] = v
-		}
+		maps.Copy(params, union.Query.params)
 		u := "UNION"
 		if union.All {
 			u = "UNION ALL"
 		}
-		sql += fmt.Sprintf("%v (%v)", u, union.Query.sql)
+		fmt.Fprintf(&sql, "%v (%v)", u, union.Query.sql)
 	}
-	return sql
+	return sql.String()
 }
 
 // CombineUnion combines the nonempty unionClause with the provided sql string.
@@ -225,21 +224,21 @@ func (q *BaseQueryBuilder) BuildOrderBy(cols []string) string {
 	if len(cols) == 0 {
 		return ""
 	}
-	s := ""
+	var s strings.Builder
 	for i, col := range cols {
 		if i > 0 {
-			s += ", "
+			s.WriteString(", ")
 		}
 		matches := orderRegex.FindStringSubmatch(col)
 		if len(matches) == 0 {
-			s += q.db.QuoteColumnName(col)
+			s.WriteString(q.db.QuoteColumnName(col))
 		} else {
 			col := col[:len(col)-len(matches[0])]
 			dir := matches[1]
-			s += q.db.QuoteColumnName(col) + " " + dir
+			s.WriteString(q.db.QuoteColumnName(col) + " " + dir)
 		}
 	}
-	return "ORDER BY " + s
+	return "ORDER BY " + s.String()
 }
 
 // BuildLimit generates the LIMIT clause.

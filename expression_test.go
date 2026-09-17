@@ -31,7 +31,7 @@ func TestHashExp(t *testing.T) {
 		"k2": NewExp("s1", Params{"ka": "va"}),
 		"k3": 1.1,
 		"k4": "abc",
-		"k5": []interface{}{1, 2},
+		"k5": []any{1, 2},
 	}
 	db := getDB()
 	params := Params{"k0": "v0"}
